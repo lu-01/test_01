@@ -1,0 +1,37 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python 调试程序: 包含参数的当前文件",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": "${command:pickArgs}"
+        },
+        {
+            "name": "train_wikievent.sh",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/engine.py",
+            "args": [
+                "--model_type=paie",
+                "--dataset_type=wikievent",
+                "--model_name_or_path=D:/huhaiyang/huggingface_models/bart-base",
+                "--role_path=./data/dset_meta/description_wikievent.csv",
+                "--prompt_path=./data/prompts/prompts_wikievent_full.csv",
+                "--seed=42",
+                "--output_dir=exps/wikievent/42/2e-5",
+                "--learning_rate=2e-5",
+                "--max_steps=10000",
+                "--max_enc_seq_length=500",
+                "--max_prompt_seq_length=80",
+                "--bipartite"
+            ],
+            "console": "integratedTerminal"
+        }
+    ]
+}
