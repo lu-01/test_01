@@ -8,7 +8,8 @@ import numpy as np
 from torch.utils.data import Dataset
 from processors.processor_base import DSET_processor  # 导入基础数据处理器
 from utils import EXTERNAL_TOKENS, _PREDEFINED_QUERY_TEMPLATE  # 导入特殊标记和预定义查询模板
-from utils import logger  # 导入日志记录器
+import logging
+logger = logging.getLogger(__name__)  # 设置日志记录器
 
 class InputFeatures(object):
     """
@@ -279,12 +280,15 @@ class MultiargProcessor(DSET_processor):
             args: 配置参数对象。
             tokenizer: 分词器对象，用于处理文本。
         """
+        logger.info(f"Entering class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name}")  # 类初始化开始日志
         super().__init__(args, tokenizer) 
         self.set_dec_input()  # 设置解码器输入模式
         self.collate_fn = ArgumentExtractionDataset.collate_fn  # 设置合并函数
 
-        # 添加日志
+        logger.info("设置合并函数和解码器输入模式完成")
         logger.info("Initialized MultiargProcessor with model_type: %s", args.model_type)
+        logger.info(f"class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name} successfully")  # 类初始化结束日志
+
     
 
     def set_dec_input(self):
@@ -299,6 +303,7 @@ class MultiargProcessor(DSET_processor):
             self.prompt_query = True
         else:
             raise NotImplementedError(f"Unexpected setting {self.args.model_type}")
+        logger.info("Set decoder input mode: arg_query=%s, prompt_query=%s", self.arg_query, self.prompt_query)
      
 
     @staticmethod
@@ -367,6 +372,7 @@ class MultiargProcessor(DSET_processor):
         Returns:
             features: 特征列表。
         """
+        logger.info(f"Entering class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name}")  # 函数开始日志
         if self.prompt_query:
             prompts = self._read_prompt_group(self.args.prompt_path)
 
@@ -517,6 +523,9 @@ class MultiargProcessor(DSET_processor):
 
         if os.environ.get("DEBUG", False): 
             print('\033[91m' + f"distinct/tot arg_role: {counter[0]}/{counter[1]} ({counter[2]})" + '\033[0m')
+        logger.info(f"Converted {len(examples)} examples to {len(features)} features.")
+        logger.info("第一个特征样本\n" + str(features[0]))  # 打印第一个特征样本的详细信息
+        logger.info(f"class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name} successfully")  # 类初始化结束日志
         return features
 
     
@@ -530,5 +539,9 @@ class MultiargProcessor(DSET_processor):
         Returns:
             dataset: 参数抽取数据集对象。
         """
+        logger.info(f"Entering class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name}")
         dataset = ArgumentExtractionDataset(features)
+        logger.info(f"Converted {len(features)} features to dataset with shape: {len(dataset)}")  # 打印数据集大小
+        logger.info(f"第一个数据集样本\n{dataset[0]}")  # 打印第一个数据集样本的详细信息
+        logger.info(f"class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name} successfully")  # 类初始化结束日志
         return dataset

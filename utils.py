@@ -14,31 +14,6 @@ EXTERNAL_TOKENS = ['<t>', '</t>']
 # 预定义的查询模板
 _PREDEFINED_QUERY_TEMPLATE = "Argument: {arg:}. Trigger: {trigger:} "
 
-from config_parser import get_args_parser  # 导入配置解析器
-args, _ = get_args_parser()  # 获取命令行或配置文件参数
-# 设置日志 如果不是推理模式
-if not args.inference_only:
-    logger.info(f"Output full path {os.path.join(os.getcwd(), args.output_dir)}")
-    # 如果输出目录不存在，则创建
-    if not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir)
-    # 配置日志：输出到文件和控制台
-    logging.basicConfig(
-        filename=os.path.join(args.output_dir, "log.txt"),  # 日志文件路径
-        format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',  # 日志格式
-        datefmt='%m/%d/%Y %H:%M:%S',  # 日期格式
-        level=logging.INFO,  # 日志级别
-        encoding='utf-8',    # 指定文件编码（Python 3.9+ 支持）
-    )
-else:  # 如果是推理模式
-    # 配置日志：仅输出到控制台
-    logging.basicConfig(
-        format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',  # 日志格式
-        datefmt='%m/%d/%Y %H:%M:%S',  # 日期格式
-        level=logging.INFO,  # 日志级别
-        encoding='utf-8',    # 指定文件编码（Python 3.9+ 支持）
-    )
-
 def set_seed(args):
     """
     设置随机种子以确保结果可复现。

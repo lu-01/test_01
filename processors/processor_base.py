@@ -1,5 +1,6 @@
 import csv
 import json
+import sys
 import ipdb
 import jsonlines
 import torch
@@ -153,12 +154,19 @@ class DSET_processor:
             args: 配置参数对象。
             tokenizer: 分词器对象，用于处理文本。
         """
+        logger.info(f"Entering class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name}")
+
         self.args = args
         self.tokenizer = tokenizer
+        logger.info(f"初始化 args 和 tokenizer (Initializing args and tokenizer) with args: {self.args}, tokenizer: {self.tokenizer}")
         logger.info(f"正在从 {self.args.role_path} 加载角色模板和参数字典 (Loading role templates and argument dictionary from {self.args.role_path})")
+        
         self.template_dict, self.argument_dict = self._read_roles(self.args.role_path)  # 读取角色模板和参数字典
         logger.info("角色模板和参数字典加载成功 (Role templates and argument dictionary loaded successfully).")
+        
         self.collate_fn = None  # 数据加载器的合并函数（默认为 None）
+
+        logger.info(f"class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name} successfully")  # 类初始化结束日志
 
     def _read_jsonlines(self, input_file):
         """
@@ -348,6 +356,9 @@ class DSET_processor:
         Returns:
             examples: 事件样本列表。
         """
+        logger.info(f"Entering class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name}")
+        logger.info(f"Processing WikiEvent dataset with {len(lines)} lines.")
+
         W = self.args.window_size
         assert(W % 2 == 0)
         all_args_num = 0
@@ -410,8 +421,9 @@ class DSET_processor:
                         evt_arg['end'] -= offset 
                         event_args.append(evt_arg)
                 examples.append(Event(doc_key, None, cut_text, event_type, event_trigger, event_args, full_text, first_word_locs))
-
-        logger.info("{} examples collected. {} dropped.".format(len(examples), self.invalid_arg_num))
+        logger.info("WikiEvent dataset processed. {} examples collected. {} arguments dropped.".format(len(examples), self.invalid_arg_num))
+        logger.info("第一个数据样本\n" + str(examples[0]))  # 打印第一个样本的详细信息
+        logger.info(f"class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name} successfully")  # 类初始化结束日志
         return examples
 
     def create_example(self, file_path):
@@ -424,6 +436,7 @@ class DSET_processor:
         Returns:
             examples: 事件样本列表。
         """
+        logger.info(f"Entering class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name} with file_path: {file_path}")
         self.invalid_arg_num = 0
         if self.args.dataset_type == 'ace_eeqa':
             lines = self._read_jsonlines(file_path)
@@ -447,6 +460,7 @@ class DSET_processor:
         Returns:
             features: 特征列表。
         """
+        logger.info(f"Entering class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name}")
         features = []
         for (example_idx, example) in enumerate(examples):
             sent = example.sent  
@@ -510,6 +524,9 @@ class DSET_processor:
                                     answer_text, start_position, end_position
                                 )
                 )
+        logger.info(f"Converted {len(examples)} examples to {len(features)} features.")
+        logger.info("第一个特征样本\n" + features[0])  # 打印第一个特征样本的详细信息
+        logger.info(f"class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name} successfully")  # 类初始化结束日志
         return features
 
     def convert_features_to_dataset(self, features):
@@ -522,6 +539,7 @@ class DSET_processor:
         Returns:
             dataset: 数据集对象。
         """
+        logger.info(f"Entering class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name}")
         all_enc_input_ids = torch.tensor([f.enc_input_ids for f in features], dtype=torch.long).to(self.args.device)
         all_enc_mask_ids = torch.tensor([f.enc_mask_ids for f in features], dtype=torch.long).to(self.args.device)
         all_dec_input_ids = torch.tensor([f.dec_input_ids for f in features], dtype=torch.long).to(self.args.device)
@@ -536,6 +554,9 @@ class DSET_processor:
                                 all_dec_input_ids, all_dec_mask_ids,
                                 all_start_positions, all_end_positions,
                                 all_example_idx, all_feature_idx)
+        logger.info(f"Converted {len(features)} features to dataset with shape: {dataset.tensors[0].shape}")
+        logger.info(f"第一个数据集样本\n{dataset[0]}")  # 打印第一个数据集样本的详细信息
+        logger.info(f"class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name} successfully")  # 类初始化结束日志
         return dataset
 
     def generate_dataloader(self, set_type):
@@ -551,6 +572,8 @@ class DSET_processor:
             dataloader: 数据加载器。
             invalid_arg_num: 无效参数数量。
         """
+        logger.info(f"Entering class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name} with set_type: {set_type}")
+        logger.info(f"Generating dataloader for set_type: {set_type}")
         assert (set_type in ['train', 'dev', 'test'])
         if set_type == 'train':
             file_path = self.args.train_file
@@ -559,23 +582,33 @@ class DSET_processor:
         else:
             file_path = self.args.test_file
         
+        logger.info(f"Loading data from file: {file_path}")
         examples = self.create_example(file_path)
+
+        logger.info("判断训练样本是否全部使用，如果是训练集，是否使用少量样本")
         if set_type == 'train' and self.args.keep_ratio < 1.0:
             sample_num = int(len(examples) * self.args.keep_ratio)
             examples = sample(examples, sample_num)
             logger.info("Few shot setting: keep ratio {}. Only {} training samples remained.".format(
                 self.args.keep_ratio, len(examples))
             )
+        logger.info(f"Number of examples loaded: {len(examples)}")
 
         features = self.convert_examples_to_features(examples)
+
         dataset = self.convert_features_to_dataset(features)
 
+        logger.info("设置取样方法：随机采样（训练） 顺序采样 (非训练)")
         if set_type != 'train':
             dataset_sampler = SequentialSampler(dataset)
         else:
             dataset_sampler = RandomSampler(dataset)
+        logger.info(f"Dataset sampler type: {type(dataset_sampler)}")
+
         if self.collate_fn:
             dataloader = DataLoader(dataset, sampler=dataset_sampler, batch_size=self.args.batch_size, collate_fn=self.collate_fn)
         else:
             dataloader = DataLoader(dataset, sampler=dataset_sampler, batch_size=self.args.batch_size)
+        logger.info(f"DataLoader created with batch size: {self.args.batch_size}, number of batches: {len(dataloader)}")
+        logger.info(f"class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name} successfully")  # 类初始化结束日志
         return examples, features, dataloader, self.invalid_arg_num
