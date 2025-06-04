@@ -289,7 +289,6 @@ class MultiargProcessor(DSET_processor):
         logger.info("Initialized MultiargProcessor with model_type: %s", args.model_type)
         logger.info(f"class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name} successfully")  # 类初始化结束日志
 
-    
 
     def set_dec_input(self):
         """
@@ -317,6 +316,7 @@ class MultiargProcessor(DSET_processor):
         Returns:
             prompts: 包含事件类型和对应提示的字典。
         """
+        logger.info(f"Reading prompt group from {prompt_path}")
         with open(prompt_path) as f:
             lines = f.readlines()
         prompts = dict()
@@ -325,6 +325,8 @@ class MultiargProcessor(DSET_processor):
                 continue
             event_type, prompt = line.split(":")
             prompts[event_type] = prompt
+        logger.info("prompts示例:  key={}, value={}".format(event_type, prompt))
+        logger.info(f"Loaded {len(prompts)} prompts from {prompt_path}")
         return prompts
 
 
@@ -373,6 +375,7 @@ class MultiargProcessor(DSET_processor):
             features: 特征列表。
         """
         logger.info(f"Entering class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name}")  # 函数开始日志
+        # 提示查询时读取提示模板   key= event_type, value= prompt
         if self.prompt_query:
             prompts = self._read_prompt_group(self.args.prompt_path)
 
@@ -380,39 +383,43 @@ class MultiargProcessor(DSET_processor):
             counter = [0, 0, 0]  # 用于调试的计数器
         features = []
         for example_idx, example in enumerate(examples):
-            example_id = example.doc_id
-            sent = example.sent  
-            event_type = example.type
-            event_args = example.args
+            example_id = example.doc_id         # 文档id：scenario_en_kairos_14 
+            sent = example.sent                 # 句子内容（分词后的列表）： ['the', '14th', 'century', 'was', 'a', 'period', 'of', 'great', 'cultural', 'and', 'political', 'change', '.'
+            event_type = example.type           # 事件类型：Cognitive.IdentifyCategorize.Unspecified
+            event_args = example.args           # 事件参数列表： [{'role': 'Cognitive.IdentifyCategorize.Unspecified', 'text': 'the 14th century', 'start': 0, 'end': 16, 'offset': 0}, ...]
      
             trigger_start, trigger_end = example.trigger['start'], example.trigger['end']
-            # 扩展触发器的完整信息
-            event_trigger = [example.trigger['text'], [trigger_start, trigger_end], example.trigger['offset']]
+            # 扩展触发器的完整信息 ['discovered', [166, 167], 0]    
+            event_trigger = [example.trigger['text'], [trigger_start, trigger_end], example.trigger['offset']]  
 
             event_args_name = [arg['role'] for arg in event_args]
             if os.environ.get("DEBUG", False): 
                 counter[2] += len(event_args_name)
+            # 处理事件, 将触发器标记为 <t> 和 </t>
             sent = sent[:trigger_start] + ['<t>'] + sent[trigger_start:trigger_end] + ['</t>'] + sent[trigger_end:]
             enc_text = " ".join(sent)
 
             # 创建旧 token 到字符索引和新 token 的映射
             old_tok_to_char_index = []     # 旧 token：基于原始分词
             old_tok_to_new_tok_index = []  # 新 token：基于 BART 分词
-
+            
             curr = 0
             for tok in sent:
                 if tok not in EXTERNAL_TOKENS:
                     old_tok_to_char_index.append([curr, curr + len(tok) - 1])  # 精确的字符起始和结束索引
                 curr += len(tok) + 1
-
+            # 调用分词器对文本进行编码，得到 input_ids（token id 序列）和 attention_mask（注意力掩码）
             enc = self.tokenizer(enc_text)
             enc_input_ids, enc_mask_ids = enc["input_ids"], enc["attention_mask"]
+            # 编码后的序列长度超过了模型允许的最大长度 max_enc_seq_length，则抛出异常，提示需要增大最大长度。
+            # 否则，如果长度不足，则通过补齐（append）
             if len(enc_input_ids) > self.args.max_enc_seq_length:
                 raise ValueError(f"Please increase max_enc_seq_length above {len(enc_input_ids)}")
             while len(enc_input_ids) < self.args.max_enc_seq_length:
                 enc_input_ids.append(self.tokenizer.pad_token_id)
                 enc_mask_ids.append(self.args.pad_mask_token)
-            
+            # 处理旧 token 到新 token 的索引映射, 字符级索引[]转换为新 token 索引
+            # BART 分词器将字符索引转换为 token 索引，与原始token索引不同
             for old_tok_idx, (char_idx_s, char_idx_e) in enumerate(old_tok_to_char_index):
                 new_tok_s = enc.char_to_token(char_idx_s)
                 new_tok_e = enc.char_to_token(char_idx_e) + 1
