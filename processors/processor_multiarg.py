@@ -25,22 +25,22 @@ class InputFeatures(object):
         初始化特征对象。
 
         Args:
-            example_id: 样本 ID。
+            example_id: 样本文档名。
             feature_id: 特征 ID。
             event_type: 事件类型。
             event_trigger: 事件触发器信息。
             enc_text: 编码器输入文本。
-            enc_input_ids: 编码器输入 ID。
-            enc_mask_ids: 编码器掩码 ID。
-            dec_prompt_text: 解码器提示文本。
-            dec_prompt_ids: 解码器提示 ID。
-            dec_prompt_mask_ids: 解码器提示掩码 ID。
+            enc_input_ids: 编码器 输入。
+            enc_mask_ids: 编码器 掩码。
+            dec_prompt_text: 解码器  提示文本。
+            dec_prompt_ids: 解码器 提示 ID。
+            dec_prompt_mask_ids: 解码器 提示掩码 ID。
             arg_quries: 参数查询信息。
-            arg_joint_prompt: 参数联合提示信息。
-            target_info: 目标信息。
+            arg_joint_prompt: 参数联合提示信息。（提示模板中角色信息）
+            target_info: 目标信息。（实际事件的角色信息）
             old_tok_to_new_tok_index: 旧到新 token 的索引映射。
-            full_text: 文本的完整内容。
-            arg_list: 参数列表。
+            full_text: 事件文本的完整内容。
+            arg_list: 参数列表。（当前事件类型的所有参数角色）
         """
         self.example_id = example_id
         self.feature_id = feature_id
@@ -55,14 +55,14 @@ class InputFeatures(object):
         self.dec_prompt_ids = dec_prompt_ids
         self.dec_prompt_mask_ids = dec_prompt_mask_ids
 
-        if arg_quries is not None:
+        if arg_quries is not None:      # 使用参数查询时
             self.dec_arg_query_ids = [v[0] for k, v in arg_quries.items()]
             self.dec_arg_query_masks = [v[1] for k, v in arg_quries.items()]
             self.dec_arg_start_positions = [v[2] for k, v in arg_quries.items()]
             self.dec_arg_end_positions = [v[3] for k, v in arg_quries.items()]
             self.start_position_ids = [v['span_s'] for k, v in target_info.items()]
             self.end_position_ids = [v['span_e'] for k, v in target_info.items()]
-        else:
+        else:           # 使用提示查询时
             self.dec_arg_query_ids = None
             self.dec_arg_query_masks = None
         
@@ -367,7 +367,9 @@ class MultiargProcessor(DSET_processor):
     def convert_examples_to_features(self, examples):
         """
         将事件样本转换为特征。
-
+            文本编码（使用BART等预训练分词器）
+            触发词和参数的位置标记
+            提示模板（Prompt）处理（若启用）
         Args:
             examples: 事件样本列表。
 
@@ -384,7 +386,7 @@ class MultiargProcessor(DSET_processor):
         features = []
         for example_idx, example in enumerate(examples):
             example_id = example.doc_id         # 文档id：scenario_en_kairos_14 
-            sent = example.sent                 # 句子内容（分词后的列表）： ['the', '14th', 'century', 'was', 'a', 'period', 'of', 'great', 'cultural', 'and', 'political', 'change', '.'
+            sent = example.sent                 # 事件句子内容（分词后的列表）： ['the', '14th', 'century', ...]
             event_type = example.type           # 事件类型：Cognitive.IdentifyCategorize.Unspecified
             event_args = example.args           # 事件参数列表： [{'role': 'Cognitive.IdentifyCategorize.Unspecified', 'text': 'the 14th century', 'start': 0, 'end': 16, 'offset': 0}, ...]
      
@@ -392,7 +394,7 @@ class MultiargProcessor(DSET_processor):
             # 扩展触发器的完整信息 ['discovered', [166, 167], 0]    
             event_trigger = [example.trigger['text'], [trigger_start, trigger_end], example.trigger['offset']]  
 
-            event_args_name = [arg['role'] for arg in event_args]
+            event_args_name = [arg['role'] for arg in event_args]       # 提取参数角色名称列表
             if os.environ.get("DEBUG", False): 
                 counter[2] += len(event_args_name)
             # 处理事件, 将触发器标记为 <t> 和 </t>
@@ -405,7 +407,7 @@ class MultiargProcessor(DSET_processor):
             
             curr = 0
             for tok in sent:
-                if tok not in EXTERNAL_TOKENS:
+                if tok not in EXTERNAL_TOKENS:      # 特殊标记，用于模型输入 ['<t>', '</t>']
                     old_tok_to_char_index.append([curr, curr + len(tok) - 1])  # 精确的字符起始和结束索引
                 curr += len(tok) + 1
             # 调用分词器对文本进行编码，得到 input_ids（token id 序列）和 attention_mask（注意力掩码）
@@ -428,12 +430,12 @@ class MultiargProcessor(DSET_processor):
 
             # 处理提示模板
             if self.prompt_query:
-                dec_prompt_text = prompts[event_type].strip()
+                dec_prompt_text = prompts[event_type].strip()      # 获取对应事件类型的提示模板
                 if dec_prompt_text:
-                    dec_prompt = self.tokenizer(dec_prompt_text)
+                    dec_prompt = self.tokenizer(dec_prompt_text)    # 对提示模板进行编码
                     dec_prompt_ids, dec_prompt_mask_ids = dec_prompt["input_ids"], dec_prompt["attention_mask"]
                     assert len(dec_prompt_ids) <= self.args.max_prompt_seq_length, f"\n{example}\n{arg_list}\n{dec_prompt_text}"
-                    while len(dec_prompt_ids) < self.args.max_prompt_seq_length:
+                    while len(dec_prompt_ids) < self.args.max_prompt_seq_length:    # 如果提示模板长度不足，则通过补齐
                         dec_prompt_ids.append(self.tokenizer.pad_token_id)
                         dec_prompt_mask_ids.append(self.args.pad_mask_token)
                 else:
@@ -443,14 +445,14 @@ class MultiargProcessor(DSET_processor):
                 
             arg_list = self.argument_dict[event_type.replace(':', '.')] 
             arg_quries = dict()
-            arg_joint_prompt = dict()
-            target_info = dict()
+            arg_joint_prompt = dict()      # 各个参数角色在提示中的位置信息
+            target_info = dict()           # 各个参数角色在当前事件中的位置信息
             if os.environ.get("DEBUG", False): 
                 arg_set = set()
-            for arg in arg_list:
+            for arg in arg_list:        # 遍历每个参数角色
                 arg_query = None
                 prompt_slots = None
-                arg_target = {
+                arg_target = {          # 参数角色在当前事件中的位置信息
                     "text": list(),
                     "span_s": list(),
                     "span_e": list()
@@ -460,13 +462,13 @@ class MultiargProcessor(DSET_processor):
                     arg_query = self.create_dec_qury(arg, event_trigger[0])
                 if self.prompt_query:
                     prompt_slots = {
-                        "tok_s": list(), 
-                        "tok_e": list(),
+                        "tok_s": list(),        # 5
+                        "tok_e": list(),        # 7
                     }
                     
                     # 使用正则表达式查找参数在提示中的位置
                     for matching_result in re.finditer(r'\b' + re.escape(arg) + r'\b', dec_prompt_text.split('.')[0]): 
-                        char_idx_s, char_idx_e = matching_result.span()
+                        char_idx_s, char_idx_e = matching_result.span()     # 14， 24
                         char_idx_e -= 1
                         tok_prompt_s = dec_prompt.char_to_token(char_idx_s)
                         tok_prompt_e = dec_prompt.char_to_token(char_idx_e) + 1
@@ -474,15 +476,15 @@ class MultiargProcessor(DSET_processor):
                         prompt_slots["tok_e"].append(tok_prompt_e)
 
                 answer_texts, start_positions, end_positions = list(), list(), list()
-                if arg in event_args_name:
+                if arg in event_args_name:      # 若参数存在于当前事件中
                     # 处理多次出现的参数
                     if os.environ.get("DEBUG", False): 
                         arg_set.add(arg)
-                    arg_idxs = [i for i, x in enumerate(event_args_name) if x == arg]
+                    arg_idxs = [i for i, x in enumerate(event_args_name) if x == arg]   # 相同参数出现的不同位置 
                     if os.environ.get("DEBUG", False): 
                         counter[0] += 1
                         counter[1] += len(arg_idxs)
-
+                    # 多个参数角色可能对应多个位置
                     for arg_idx in arg_idxs:
                         event_arg_info = event_args[arg_idx]
                         answer_text = event_arg_info['text']
@@ -509,8 +511,8 @@ class MultiargProcessor(DSET_processor):
                 target_info[arg] = arg_target
 
             if not self.arg_query:
-                arg_quries = None
-            if not self.prompt_query:
+                arg_quries = None       
+            if not self.prompt_query:   
                 arg_joint_prompt = None
 
             # 创建特征对象
@@ -547,6 +549,7 @@ class MultiargProcessor(DSET_processor):
             dataset: 参数抽取数据集对象。
         """
         logger.info(f"Entering class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name}")
+        # 转换成dataset对象，无实际变化
         dataset = ArgumentExtractionDataset(features)
         logger.info(f"Converted {len(features)} features to dataset with shape: {len(dataset)}")  # 打印数据集大小
         logger.info(f"第一个数据集样本\n{dataset[0]}")  # 打印第一个数据集样本的详细信息

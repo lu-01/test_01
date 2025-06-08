@@ -42,18 +42,18 @@ def run(args, model, processor, optimizer, scheduler):
     logger.info("test dataloader generation")
     test_examples, test_features, test_dataloader, args.test_invalid_num = processor.generate_dataloader('test')
 
-    # # 初始化运行器
-    # runner = Runner(
-    #     cfg=args,  # 配置参数
-    #     data_samples=[train_examples, dev_examples, test_examples],  # 数据样本
-    #     data_features=[train_features, dev_features, test_features],  # 数据特征
-    #     data_loaders=[train_dataloader, dev_dataloader, test_dataloader],  # 数据加载器
-    #     model=model,  # 模型
-    #     optimizer=optimizer,  # 优化器
-    #     scheduler=scheduler,  # 学习率调度器
-    #     metric_fn_dict=None,  # 评估指标函数字典（此处为 None）
-    # )
-    # runner.run()  # 根据配置执行训练或推理任务
+    # 初始化运行器
+    runner = Runner(
+        cfg=args,  # 配置参数
+        data_samples=[train_examples, dev_examples, test_examples],  # 数据样本
+        data_features=[train_features, dev_features, test_features],  # 数据特征
+        data_loaders=[train_dataloader, dev_dataloader, test_dataloader],  # 数据加载器
+        model=model,  # 模型
+        optimizer=optimizer,  # 优化器
+        scheduler=scheduler,  # 学习率调度器
+        metric_fn_dict=None,  # 评估指标函数字典（此处为 None）
+    )
+    runner.run()  # 根据配置执行训练或推理任务
 
 
 def main():

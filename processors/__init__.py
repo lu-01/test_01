@@ -63,7 +63,7 @@ def build_processor(args, tokenizer):
             args.max_span_num_dict = json.load(f)  # 加载 JSON 文件，存储为字典
         logger.info("最大跨度数量字典加载完成")
 
-    # 初始化多参数处理器
+    # 初始化多参数处理器，读取参数角色参数模板，定义其他数据处理操作
     logger.info("初始化 MultiargProcessor")
     processor = MultiargProcessor(args, tokenizer)
     logger.info("数据处理器构建完成")

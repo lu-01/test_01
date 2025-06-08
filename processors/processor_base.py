@@ -29,7 +29,7 @@ class Event:
             event_trigger: 事件触发器信息（字典）。
             event_args: 事件参数列表。
             full_text: 文档的完整文本。
-            first_word_locs: 每个句子第一个单词的位置（可选）。
+            first_word_locs: 每个句子第一个单词的位置。
         """
         self.doc_id = doc_id
         self.sent_id = sent_id
@@ -365,18 +365,18 @@ class DSET_processor:
 
         examples = []
         for line in lines:
-            entity_dict = {entity['id']: entity for entity in line['entity_mentions']}
-            events = line["event_mentions"]
+            entity_dict = {entity['id']: entity for entity in line['entity_mentions']}  # 文档实体字典
+            events = line["event_mentions"]         # 事件列表
             if not events:
                 continue
-            doc_key = line["doc_id"]
-            full_text = line['tokens']
-            sent_length = len(full_text)
+            doc_key = line["doc_id"]                # 文档 ID
+            full_text = line['tokens']              # 文档完整文本，tokens形式      
+            sent_length = len(full_text)            # 文档长度
 
             curr_loc = 0
             first_word_locs = []
             for sent in line["sentences"]:
-                first_word_locs.append(curr_loc)
+                first_word_locs.append(curr_loc)   # 每个句子第一个单词的位置
                 curr_loc += len(sent[0])
 
             for event in events:
@@ -384,42 +384,45 @@ class DSET_processor:
                 cut_text = full_text
                 event_trigger = event['trigger']
 
+                # 滑动窗口，保证触发词在窗口中间位置，同时调整相应位置信息
                 offset, min_s, max_e = 0, 0, W + 1
                 if sent_length > W + 1:
                     if event_trigger['end'] <= W // 2:  # 触发词位于句子前部
-                        cut_text = full_text[:(W + 1)]
+                        cut_text = full_text[:(W + 1)]      # 直接截取前 W + 1 个字符，触发词位置不需调整
                     elif event_trigger['start'] >= sent_length - W / 2:  # 触发词位于句子后部
-                        offset = sent_length - (W + 1)
-                        min_s += offset
+                        offset = sent_length - (W + 1)      # 计算偏移量
+                        min_s += offset                     # 调整最小起始位置
                         max_e += offset
-                        event_trigger['start'] -= offset
+                        event_trigger['start'] -= offset    # 调整触发词起始位置
                         event_trigger['end'] -= offset 
-                        cut_text = full_text[-(W + 1):]
-                    else:
-                        offset = event_trigger['start'] - W // 2
-                        min_s += offset
+                        cut_text = full_text[-(W + 1):]     # # 截取后 W + 1 个字符，触发词位置不需调整
+                    else:                               # 触发词位于句子中间
+                        offset = event_trigger['start'] - W // 2        # 计算偏移量
+                        min_s += offset                 # 调整最小起始位置和最大结束位置
                         max_e += offset
-                        event_trigger['start'] -= offset
+                        event_trigger['start'] -= offset    # 调整触发词起始位置
                         event_trigger['end'] -= offset 
                         cut_text = full_text[offset:(offset + W + 1)]
-                event_trigger['offset'] = offset
+                event_trigger['offset'] = offset        # 记录触发词的偏移量
                         
-                event_args = list()
+                event_args = list()         # 事件参数列表，包含每个参数的起始位置、结束位置、文本和角色
                 for arg_info in event['arguments']:
-                    all_args_num += 1
+                    all_args_num += 1           # 记录参数数量
 
                     evt_arg = dict()
                     arg_entity = entity_dict[arg_info['entity_id']]
-                    evt_arg['start'] = arg_entity['start']
-                    evt_arg['end'] = arg_entity['end']
-                    evt_arg['text'] = arg_info['text']
-                    evt_arg['role'] = arg_info['role']
-                    if evt_arg['start'] < min_s or evt_arg['end'] > max_e:
-                        self.invalid_arg_num += 1
-                    else:
-                        evt_arg['start'] -= offset
+                    evt_arg['start'] = arg_entity['start']      # 获取实体起始位置
+                    evt_arg['end'] = arg_entity['end']          # 获取实体结束位置
+                    evt_arg['text'] = arg_info['text']          # 获取实体文本
+                    evt_arg['role'] = arg_info['role']          # 获取实体角色
+                    if evt_arg['start'] < min_s or evt_arg['end'] > max_e:      # 如果实体不在窗口范围内
+                        self.invalid_arg_num += 1               # 记录无效参数数量
+                    else:                                   # 实体在窗口范围内
+                        # 调整实体起始和结束位置
+                        evt_arg['start'] -= offset              
                         evt_arg['end'] -= offset 
                         event_args.append(evt_arg)
+                # 创建事件样本
                 examples.append(Event(doc_key, None, cut_text, event_type, event_trigger, event_args, full_text, first_word_locs))
         logger.info("WikiEvent dataset processed. {} examples collected. {} arguments dropped.".format(len(examples), self.invalid_arg_num))
         logger.info("第一个数据样本\n" + str(examples[0]))  # 打印第一个样本的详细信息
@@ -575,6 +578,7 @@ class DSET_processor:
         logger.info(f"Entering class: {self.__class__.__name__}, function: {sys._getframe().f_code.co_name} with set_type: {set_type}")
         logger.info(f"Generating dataloader for set_type: {set_type}")
         assert (set_type in ['train', 'dev', 'test'])
+        # 获取数据集文件路径
         if set_type == 'train':
             file_path = self.args.train_file
         elif set_type == 'dev':
@@ -583,6 +587,7 @@ class DSET_processor:
             file_path = self.args.test_file
         
         logger.info(f"Loading data from file: {file_path}")
+        # 创建事件样本
         examples = self.create_example(file_path)
 
         logger.info("判断训练样本是否全部使用，如果是训练集，是否使用少量样本")
@@ -593,9 +598,9 @@ class DSET_processor:
                 self.args.keep_ratio, len(examples))
             )
         logger.info(f"Number of examples loaded: {len(examples)}")
-
+        # 将事件样本转换为特征
         features = self.convert_examples_to_features(examples)
-
+        # 将特征转换为dataset对象，方便batch处理
         dataset = self.convert_features_to_dataset(features)
 
         logger.info("设置取样方法：随机采样（训练） 顺序采样 (非训练)")
