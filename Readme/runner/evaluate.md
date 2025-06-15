@@ -1,86 +1,59 @@
-import torch
-import logging
-logger = logging.getLogger(__name__)
-
-from utils import get_best_indexes, get_best_index
-
-
+# class BaseEvaluator
+```py
 class BaseEvaluator:
     """
     基础评估器类，提供通用的评估功能。
     """
-    def __init__(
-        self,
-        cfg=None,  # 配置对象，包含评估参数
-        data_loader=None,  # 数据加载器，用于提供评估数据
-        model=None,  # 模型对象
-        metric_fn_dict=None,  # 评估指标函数字典
-    ):
-        self.cfg = cfg
-        self.eval_loader = data_loader
-        self.model = model
-        self.metric_fn_dict = metric_fn_dict
+    def __init__(self, cfg=None, data_loader=None, model=None, metric_fn_dict=None):
+        self.cfg = cfg          # 配置对象，包含评估参数
+        self.eval_loader = data_loader  # 数据加载器，用于提供评估数据
+        self.model = model       # 模型对象
+        self.metric_fn_dict = metric_fn_dict   # 评估指标函数字典
 
+    # 初始化评估指标字典。初始化为None
     def _init_metric(self):
-        """
-        初始化评估指标字典。
-        """
-        self.metric_val_dict = {metric: None for metric in self.metric_fn_dict}
+        self.metric_val_dict = {metric: None for metric in self.metric_fn_dict} 
 
+    # 计算单个批次的模型输出。
     def calculate_one_batch(self, batch):
-        """
-        计算单个批次的模型输出。
-        """
         inputs, named_v = self.convert_batch_to_inputs(batch)  # 转换批次数据为模型输入
         with torch.no_grad():  # 禁用梯度计算
             _, outputs_list = self.model(**inputs)  # 获取模型输出
         return outputs_list, named_v
-
+    
+    # 评估单个批次数据。
     def evaluate_one_batch(self, batch):
-        """
-        评估单个批次数据。
-        """
         outputs_list, named_v = self.calculate_one_batch(batch)  # 计算模型输出
         self.collect_fn(outputs_list, named_v, batch)  # 收集评估结果
 
+    # 执行完整的评估过程。     主要流程
     def evaluate(self):
-        """
-        执行完整的评估过程。
-        """
         self.model.eval()  # 设置模型为评估模式
         self.build_and_clean_record()  # 初始化记录
         self._init_metric()  # 初始化评估指标
         for batch in self.eval_loader:  # 遍历评估数据
             self.evaluate_one_batch(batch)  # 计算模型输出，收集评估结果
-        output = self.predict()  # 生成预测结果，得到预测结果，预测跨度，返回跨度的评估指标
+        output = self.predict()  # 生成预测结果
         return output
-
+    
+    # 初始化或清理记录（需要子类实现）。
     def build_and_clean_record(self):
-        """
-        初始化或清理记录（需要子类实现）。
-        """
         raise NotImplementedError()
 
+    # 收集评估结果（需要子类实现）。
     def collect_fn(self, outputs_list, named_v, batch):
-        """
-        收集评估结果（需要子类实现）。
-        """
         raise NotImplementedError()
 
+    # 转换批次数据为模型输入（需要子类实现）。
     def convert_batch_to_inputs(self, batch):
-        """
-        转换批次数据为模型输入（需要子类实现）。
-        """
         raise NotImplementedError()
 
+    # 生成预测结果（需要子类实现）。
     def predict(self):
-        """
-        生成预测结果（需要子类实现）。
-        """
         raise NotImplementedError()
-
-
-class Evaluator(BaseEvaluator):
+```
+# class Evaluator(BaseEvaluator)
+```py
     """
     具体评估器类，继承自 BaseEvaluator，提供特定模型的评估逻辑。
     """
@@ -95,14 +68,12 @@ class Evaluator(BaseEvaluator):
         invalid_num=0,  # 无效样本数量
     ):
         super().__init__(cfg, data_loader, model, metric_fn_dict)
-        self.features = features
-        self.set_type = set_type
-        self.invalid_num = invalid_num
-
+        self.features = features    # 事件特征列表
+        self.set_type = set_type    # 数据集类型（如验证集或测试集）  DEV/TEST
+        self.invalid_num = invalid_num  # 无效样本数量
+    
+    # 根据模型类型，将批次数据转换为模型输入。
     def convert_batch_to_inputs(self, batch):
-        """
-        根据模型类型，将批次数据转换为模型输入。
-        """
         if self.cfg.model_type == "paie":  # 如果模型类型为 "paie"
             inputs = {
                 'enc_input_ids':  batch[0].to(self.cfg.device),  # 编码器输入 ID
@@ -131,10 +102,8 @@ class Evaluator(BaseEvaluator):
         }
         return inputs, named_v
 
+    # 初始化记录字典，用于存储评估过程中生成的中间结果。
     def build_and_clean_record(self):
-        """
-        初始化记录字典，用于存储评估过程中生成的中间结果。
-        """
         self.record = {
             "feature_id_list": list(),  # 特征 ID 列表
             "role_list": list(),  # 参数角色列表
@@ -142,10 +111,8 @@ class Evaluator(BaseEvaluator):
             "full_end_logit_list": list(),  # 结束位置 logits 列表
         }
 
+    # 收集模型输出并存储到记录中。
     def collect_fn(self, outputs_list, named_v, batch):
-        """
-        收集模型输出并存储到记录中。
-        """
         bs = len(batch[0])  # 批次大小
         for i in range(bs):
             predictions = outputs_list[i]  # 获取当前样本的预测结果
@@ -158,14 +125,12 @@ class Evaluator(BaseEvaluator):
                     self.record["full_start_logit_list"].append(start_logit)
                     self.record["full_end_logit_list"].append(end_logit)
 
+    # 根据记录生成最终的预测结果。
     def predict(self):
-        """
-        根据记录生成最终的预测结果。
-        """
         # 初始化特征的预测结果
         for feature in self.features:
-            feature.init_pred()     # 初始化预测字典。pred_dict_tok，pred_dict_word  
-            feature.set_gt(self.cfg.model_type, self.cfg.dataset_type)  # 设置 ground truth
+            feature.init_pred()
+            feature.set_gt(self.cfg.model_type, self.cfg.dataset_type)
 
         if self.cfg.model_type == 'paie':  # 如果模型类型为 "paie"
             pred_list = []
@@ -183,7 +148,7 @@ class Evaluator(BaseEvaluator):
             for (pred, feature_id, role) in zip(pred_list, self.record["feature_id_list"], self.record["role_list"]):
                 pred_span = (pred[0].item(), pred[1].item())  # 转换为预测跨度
                 feature = self.features[feature_id]
-                feature.add_pred(role, pred_span, self.cfg.dataset_type)    # 将预测结果添加到特征中，参数角色，预测的跨度，数据集类型
+                feature.add_pred(role, pred_span, self.cfg.dataset_type)
         else:  # 如果模型类型为 "base"
             for feature_id, role, start_logit, end_logit in zip(
                 self.record["feature_id_list"], self.record["role_list"], self.record["full_start_logit_list"], self.record["full_end_logit_list"]
@@ -209,4 +174,5 @@ class Evaluator(BaseEvaluator):
             logger.info('{}-Identification. {} ({}): R {} P {} F {}'.format(
                 metric, self.set_type, perf_i['gt_num'], perf_i['recall'], perf_i['precision'], perf_i['f1']))
 
-        return self.metric_val_dict['span']  # 返回 "span" 指标的评估结果
+        return self.metric_val_dict['span']  # 返回 "span" 指标的评估结果，即跨度
+```
